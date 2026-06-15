@@ -1,0 +1,42 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Tablet Osu Controller"
+run/main_scene="res://scenes/v2_server.tscn"
+config/features=PackedStringArray("4.2", "C#")
+
+[debug]
+
+file_logging/enable_file_logging=true
+file_logging/max_log_files=20
+settings/stdout/verbose_stdout=true
+
+[display]
+
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
+
+[dotnet]
+
+project/assembly_name="TabletOsuController"
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+pointing/android/enable_long_press_as_right_click=true
+pointing/android/enable_pan_and_scale_gestures=true
+
+[rendering]
+
+renderer/rendering_method="mobile"
+textures/vram_compression/import_etc2_astc=true

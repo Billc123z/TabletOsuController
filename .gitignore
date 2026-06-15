@@ -1,0 +1,27 @@
+# Godot 專用
+.godot/
+.mono/
+export_presets.cfg
+*.import
+
+# C# / .NET 專用
+bin/
+obj/
+.vs/
+
+# IDE 相關
+.idea/
+*.sln
+*.csproj.user
+
+# 專案產生的暫存/測試檔案
+*.tmp
+*.log
+s-pen紀錄.txt
+TODO.md
+
+# 打包匯出的結果
+released/
+
+# 其他本地環境設定
+Godot_v4.2.2-stable_mono_win64/

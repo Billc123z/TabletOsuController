@@ -1,0 +1,148 @@
+[gd_scene load_steps=2 format=3 uid="uid://b8f3ch7pn5e0e"]
+
+[ext_resource type="Script" path="res://scripts/android_client.gd" id="1_client_script"]
+
+[node name="AndroidClient" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_client_script")
+
+[node name="SettingsLayer" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 32
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 32
+
+[node name="Panel" type="PanelContainer" parent="SettingsLayer"]
+layout_mode = 2
+
+[node name="SettingsVBox" type="VBoxContainer" parent="SettingsLayer/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="SettingsLayer/Panel/SettingsVBox"]
+layout_mode = 2
+text = "Android UDP Touch Client"
+horizontal_alignment = 1
+
+[node name="Status" type="Label" parent="SettingsLayer/Panel/SettingsVBox"]
+layout_mode = 2
+text = "Enter the Windows PC address, then apply."
+horizontal_alignment = 1
+
+[node name="ServerRow" type="HBoxContainer" parent="SettingsLayer/Panel/SettingsVBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ServerLabel" type="Label" parent="SettingsLayer/Panel/SettingsVBox/ServerRow"]
+layout_mode = 2
+text = "Server IP"
+
+[node name="ServerIp" type="LineEdit" parent="SettingsLayer/Panel/SettingsVBox/ServerRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "10.48.90.189"
+placeholder_text = "Windows PC LAN IP"
+
+[node name="PortRow" type="HBoxContainer" parent="SettingsLayer/Panel/SettingsVBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="PortLabel" type="Label" parent="SettingsLayer/Panel/SettingsVBox/PortRow"]
+layout_mode = 2
+text = "UDP Port"
+
+[node name="Port" type="SpinBox" parent="SettingsLayer/Panel/SettingsVBox/PortRow"]
+layout_mode = 2
+min_value = 1024.0
+max_value = 65535.0
+value = 42424.0
+rounded = true
+
+[node name="TapToClick" type="CheckButton" parent="SettingsLayer/Panel/SettingsVBox"]
+layout_mode = 2
+button_pressed = true
+text = "Enable Pen Clicks (Tap to click)"
+
+[node name="ApplyButton" type="Button" parent="SettingsLayer/Panel/SettingsVBox"]
+layout_mode = 2
+text = "Apply UDP Target"
+
+[node name="TouchLayer" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Backdrop" type="ColorRect" parent="TouchLayer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.08, 0.08, 0.08, 1)
+
+[node name="TouchArea" type="ColorRect" parent="TouchLayer"]
+layout_mode = 0
+offset_left = 120.0
+offset_top = 120.0
+offset_right = 1120.0
+offset_bottom = 720.0
+color = Color(0, 0, 0, 1)
+
+[node name="CenterHandle" type="Button" parent="TouchLayer"]
+layout_mode = 0
+offset_left = 550.0
+offset_top = 385.0
+offset_right = 690.0
+offset_bottom = 455.0
+text = "Move"
+
+[node name="ResizeHandle" type="Button" parent="TouchLayer"]
+layout_mode = 0
+offset_left = 1060.0
+offset_top = 660.0
+offset_right = 1120.0
+offset_bottom = 720.0
+text = "Resize"
+
+[node name="Toolbar" type="HBoxContainer" parent="TouchLayer"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -300.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = 64.0
+grow_horizontal = 0
+theme_override_constants/separation = 8
+alignment = 2
+
+[node name="HzLabel" type="Label" parent="TouchLayer/Toolbar"]
+layout_mode = 2
+text = "-- Hz"
+
+[node name="EditToggle" type="Button" parent="TouchLayer/Toolbar"]
+layout_mode = 2
+toggle_mode = true
+button_pressed = true
+text = "Edit Area"
+
+[node name="BackButton" type="Button" parent="TouchLayer/Toolbar"]
+layout_mode = 2
+text = "返回設定"
