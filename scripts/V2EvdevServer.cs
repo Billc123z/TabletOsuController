@@ -25,6 +25,8 @@ public partial class V2EvdevServer : Control
 	private volatile float  _areaH       = 1f;
 	private volatile bool   _tapToClick  = true;
 	private volatile bool   _mappingLive = false; // true only while TCP alive
+	private volatile float  _currentFx   = 0f;
+	private volatile float  _currentFy   = 0f;
 
 	// ── runtime ───────────────────────────────────────────────────────────
 	private bool    _running = false;
@@ -33,6 +35,16 @@ public partial class V2EvdevServer : Control
 	private Thread?  _tcpThread;
 	private bool    _leftDown = false;
 	private bool    _rightDown = false;
+
+	// ── Touch state machine ────────────────────────────────────────────────
+	private enum TouchState { Idle, Touching, Moving, Dragging }
+	private TouchState _touchState = TouchState.Idle;
+	private long _touchDownTimeMs = 0;
+	private float _touchDownX = 0;
+	private float _touchDownY = 0;
+	private const float MoveThreshold = 100f; // raw evdev units (~1.5mm)
+	private const long DragDelayMs = 200; // milliseconds
+	private readonly object _touchLock = new object();
 
 	// ── Hz counter ────────────────────────────────────────────────────────
 	private int    _hzCounter = 0;
@@ -94,6 +106,28 @@ public partial class V2EvdevServer : Control
 					? $"{_currentHz} Hz"
 					: "-- Hz (waiting for client)";
 		}
+
+		if (_mappingLive && _statusLabel != null)
+		{
+			TouchState curState;
+			lock (_touchLock) { curState = _touchState; }
+			_statusLabel.Text = $"Live ({curState}) | Pos: ({_currentFx:F2}, {_currentFy:F2})\nArea: ({_areaX:F2},{_areaY:F2}) {_areaW:F2}×{_areaH:F2} | Tap: {_tapToClick}";
+		}
+
+		// Check for drag timeout (exactly at 200ms)
+		lock (_touchLock)
+		{
+			if (_touchState == TouchState.Touching)
+			{
+				long elapsed = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _touchDownTimeMs;
+				if (elapsed >= DragDelayMs)
+				{
+					_touchState = TouchState.Dragging;
+					MouseEvent(MouseDown, 0, 0, 0, UIntPtr.Zero);
+					_leftDown = true;
+				}
+			}
+		}
 	}
 
 	public override void _Notification(int what)
@@ -111,6 +145,7 @@ public partial class V2EvdevServer : Control
 			MouseEvent(MouseUp, 0, 0, 0, UIntPtr.Zero);
 			_leftDown = false;
 		}
+		lock (_touchLock) { _touchState = TouchState.Idle; }
 		if (_rightDown)
 		{
 			MouseEvent(MouseRightUp, 0, 0, 0, UIntPtr.Zero);
@@ -153,13 +188,19 @@ public partial class V2EvdevServer : Control
 
 		try
 		{
+			string adbCommand = "adb";
+			if (System.IO.File.Exists("adb\\adb.exe"))
+			{
+				adbCommand = "\"adb\\adb.exe\"";
+			}
+
 			// Use cmd.exe /c so it inherits the user's PATH (where adb.exe lives)
 			_adbProc = new Process
 			{
 				StartInfo = new ProcessStartInfo
 				{
 					FileName               = "cmd.exe",
-					Arguments              = $"/c adb shell getevent {AdbDevice}",
+					Arguments              = $"/c {adbCommand} shell getevent {AdbDevice}",
 					UseShellExecute        = false,
 					RedirectStandardOutput = true,
 					RedirectStandardError  = true,
@@ -172,13 +213,13 @@ public partial class V2EvdevServer : Control
 			_adbThread = new Thread(AdbLoop) { IsBackground = true };
 			_adbThread.Start();
 
-			GD.Print($"ADB started: cmd.exe /c adb shell getevent {AdbDevice}");
+			GD.Print($"ADB started: cmd.exe /c {adbCommand} shell getevent {AdbDevice}");
 			CallDeferred(nameof(SetStatus), $"ADB running ({AdbDevice})\nWaiting for Android client on TCP :{TcpPort}");
 		}
 		catch (Exception ex)
 		{
 			GD.PrintErr("ADB start failed: " + ex.Message);
-			CallDeferred(nameof(SetStatus), "ADB failed: " + ex.Message + "\nIs adb.exe in your PATH?");
+			CallDeferred(nameof(SetStatus), "ADB failed: " + ex.Message + "\nIs adb missing?");
 		}
 	}
 
@@ -260,6 +301,9 @@ public partial class V2EvdevServer : Control
 		fx = Math.Clamp(fx, 0f, 1f);
 		fy = Math.Clamp(fy, 0f, 1f);
 
+		_currentFx = fx;
+		_currentFy = fy;
+
 		// mouse_event with MOUSEEVENTF_ABSOLUTE maps 0.0-1.0 to 0-65535
 		uint ax = (uint)(fx * 65535f);
 		uint ay = (uint)(fy * 65535f);
@@ -268,26 +312,60 @@ public partial class V2EvdevServer : Control
 
 		if (_tapToClick)
 		{
-			if (down && !_leftDown)
-			{
-				MouseEvent(MouseDown, 0, 0, 0, UIntPtr.Zero);
-				_leftDown = true;
-			}
-			else if (!down && _leftDown)
-			{
-				MouseEvent(MouseUp, 0, 0, 0, UIntPtr.Zero);
-				_leftDown = false;
-			}
+			long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-			if (rightDown && !_rightDown)
+			lock (_touchLock)
 			{
-				MouseEvent(MouseRightDown, 0, 0, 0, UIntPtr.Zero);
-				_rightDown = true;
-			}
-			else if (!rightDown && _rightDown)
-			{
-				MouseEvent(MouseRightUp, 0, 0, 0, UIntPtr.Zero);
-				_rightDown = false;
+				if (down)
+				{
+					if (_touchState == TouchState.Idle)
+					{
+						_touchState = TouchState.Touching;
+						_touchDownTimeMs = nowMs;
+						_touchDownX = rawX;
+						_touchDownY = rawY;
+					}
+					else if (_touchState == TouchState.Touching)
+					{
+						float dx = rawX - _touchDownX;
+						float dy = rawY - _touchDownY;
+						float distSq = dx * dx + dy * dy;
+
+						if (distSq > MoveThreshold * MoveThreshold)
+						{
+							// Moved past threshold BEFORE 200ms elapsed -> lock to Moving mode
+							_touchState = TouchState.Moving;
+						}
+					}
+				}
+				else // pen lifted
+				{
+					if (_touchState == TouchState.Touching)
+					{
+						// Tap! Lifted before 200ms without significant movement.
+						MouseEvent(MouseDown, 0, 0, 0, UIntPtr.Zero);
+						MouseEvent(MouseUp, 0, 0, 0, UIntPtr.Zero);
+						_leftDown = false;
+					}
+					else if (_touchState == TouchState.Dragging)
+					{
+						// Finish drag
+						MouseEvent(MouseUp, 0, 0, 0, UIntPtr.Zero);
+						_leftDown = false;
+					}
+					_touchState = TouchState.Idle;
+				}
+
+				if (rightDown && !_rightDown)
+				{
+					MouseEvent(MouseRightDown, 0, 0, 0, UIntPtr.Zero);
+					_rightDown = true;
+				}
+				else if (!rightDown && _rightDown)
+				{
+					MouseEvent(MouseRightUp, 0, 0, 0, UIntPtr.Zero);
+					_rightDown = false;
+				}
 			}
 		}
 	}
@@ -339,6 +417,7 @@ public partial class V2EvdevServer : Control
 						MouseEvent(MouseUp, 0, 0, 0, UIntPtr.Zero);
 						_leftDown = false;
 					}
+					lock (_touchLock) { _touchState = TouchState.Idle; }
 					if (_rightDown)
 					{
 						MouseEvent(MouseRightUp, 0, 0, 0, UIntPtr.Zero);
@@ -348,8 +427,7 @@ public partial class V2EvdevServer : Control
 					_mappingLive = true;
 
 					GD.Print($"Mapping: area=({_areaX:F3},{_areaY:F3}) size=({_areaW:F3},{_areaH:F3}) tap={_tapToClick}");
-					CallDeferred(nameof(SetStatus),
-						$"Live | area ({_areaX:F2},{_areaY:F2}) {_areaW:F2}×{_areaH:F2} | tap={_tapToClick}");
+					// UI update is now handled dynamically in _Process
 				}
 			}
 			catch (Exception ex) when (_running)
@@ -365,6 +443,7 @@ public partial class V2EvdevServer : Control
 				MouseEvent(MouseUp, 0, 0, 0, UIntPtr.Zero);
 				_leftDown = false;
 			}
+			lock (_touchLock) { _touchState = TouchState.Idle; }
 			if (_rightDown)
 			{
 				MouseEvent(MouseRightUp, 0, 0, 0, UIntPtr.Zero);

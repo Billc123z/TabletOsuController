@@ -20,6 +20,8 @@ obj/
 s-pen紀錄.txt
 TODO.md
 
+# ADB 執行檔 (打包 Release 時再包入即可)
+adb/
 # 打包匯出的結果
 released/
 
