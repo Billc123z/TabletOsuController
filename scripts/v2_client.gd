@@ -6,12 +6,13 @@ const RESIZE_HANDLE_SIZE := Vector2(72.0, 60.0)
 const LAYOUT_PATH := "user://v2_layout.cfg"
 const TCP_PORT := 42425
 
-@export var server_ip := "10.48.90.189"
+@export var server_ip := ""
 
 @onready var settings_layer: MarginContainer = $SettingsLayer
 @onready var touch_layer: Control = $TouchLayer
 @onready var status_label: Label = $SettingsLayer/Panel/VBox/Status
 @onready var server_ip_edit: LineEdit = $SettingsLayer/Panel/VBox/ServerRow/ServerIp
+@onready var scan_button: Button = $SettingsLayer/Panel/VBox/ServerRow/ScanButton
 @onready var tap_to_click_check: CheckButton = $SettingsLayer/Panel/VBox/TapToClick
 @onready var apply_button: Button = $SettingsLayer/Panel/VBox/ApplyButton
 @onready var touch_area: ColorRect = $TouchLayer/TouchArea
@@ -21,6 +22,8 @@ const TCP_PORT := 42425
 @onready var back_button: Button = $TouchLayer/Toolbar/BackButton
 
 var _tcp := StreamPeerTCP.new()
+var _udp_scan := PacketPeerUDP.new()
+var _scan_ticks := 0
 var _enable_pen_clicks := true
 var _edit_mode := true
 var _edit_action := ""
@@ -37,8 +40,13 @@ func _ready() -> void:
 	tap_to_click_check.button_pressed = _enable_pen_clicks
 	tap_to_click_check.toggled.connect(func(t): _enable_pen_clicks = t)
 	apply_button.pressed.connect(_apply_and_connect)
+	scan_button.pressed.connect(_on_scan_pressed)
 	back_button.pressed.connect(_show_settings)
 	edit_toggle.toggled.connect(_set_edit_mode)
+	
+	_udp_scan.set_broadcast_enabled(true)
+	_udp_scan.bind(42427)
+
 	_load_layout()
 	_show_settings()
 	_set_edit_mode(true)
@@ -52,7 +60,43 @@ func _process(_delta: float) -> void:
 		# Lost connection
 		_connected = false
 		status_label.text = "Disconnected. Re-apply to reconnect."
+		
+	if _scan_ticks > 0:
+		_scan_ticks -= 1
+		if _scan_ticks % 10 == 0:
+			_send_broadcasts()
+		if _scan_ticks == 0 and status_label.text == "Scanning for Server...":
+			status_label.text = "Scan finished. No server found."
+			
+	while _udp_scan.get_available_packet_count() > 0:
+		var packet := _udp_scan.get_packet()
+		var msg := packet.get_string_from_ascii()
+		if msg == "OsuServerV2":
+			var ip := _udp_scan.get_packet_ip()
+			server_ip_edit.text = ip
+			status_label.text = "Found Server: " + ip
+			_scan_ticks = 0 # stop scanning
+			
+func _on_scan_pressed() -> void:
+	status_label.text = "Scanning for Server..."
+	server_ip_edit.text = ""
+	_scan_ticks = 100 # Approx 1.5 seconds of scanning (60 fps)
+	_send_broadcasts()
 
+func _send_broadcasts() -> void:
+	var msg := "OsuClientV2".to_ascii_buffer()
+	
+	# Global broadcast
+	_udp_scan.set_dest_address("255.255.255.255", 42426)
+	_udp_scan.put_packet(msg)
+	
+	# Subnet broadcasts (crucial for Android USB tethering)
+	for ip in IP.get_local_addresses():
+		var parts = ip.split(".")
+		if parts.size() == 4 and ip != "127.0.0.1":
+			var subnet_bcast = "%s.%s.%s.255" % [parts[0], parts[1], parts[2]]
+			_udp_scan.set_dest_address(subnet_bcast, 42426)
+			_udp_scan.put_packet(msg)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:

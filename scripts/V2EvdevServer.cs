@@ -33,6 +33,7 @@ public partial class V2EvdevServer : Control
 	private Process? _adbProc;
 	private Thread?  _adbThread;
 	private Thread?  _tcpThread;
+	private Thread?  _udpThread;
 	private bool    _leftDown = false;
 	private bool    _rightDown = false;
 
@@ -86,6 +87,10 @@ public partial class V2EvdevServer : Control
 		// Start TCP listener for mapping from Android
 		_tcpThread = new Thread(TcpLoop) { IsBackground = true };
 		_tcpThread.Start();
+
+		// Start UDP listener for auto-discovery
+		_udpThread = new Thread(UdpLoop) { IsBackground = true };
+		_udpThread.Start();
 
 		// Auto-start ADB removed; now starts on TCP connect
 		// StartAdb();
@@ -459,6 +464,37 @@ public partial class V2EvdevServer : Control
 		}
 
 		listener.Stop();
+	}
+
+	private void UdpLoop()
+	{
+		try
+		{
+			using (UdpClient udp = new UdpClient(42426))
+			{
+				udp.Client.ReceiveTimeout = 1000;
+				while (_running)
+				{
+					try
+					{
+						IPEndPoint ep = new IPEndPoint(IPAddress.Any, 0);
+						byte[] data = udp.Receive(ref ep);
+						string msg = System.Text.Encoding.ASCII.GetString(data);
+						if (msg == "OsuClientV2")
+						{
+							byte[] reply = System.Text.Encoding.ASCII.GetBytes("OsuServerV2");
+							udp.Send(reply, reply.Length, ep);
+							GD.Print($"UDP Discovery: Replied to {ep.Address}");
+						}
+					}
+					catch (SocketException) { /* Timeout, just loop */ }
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			GD.PrintErr("UDP loop error: " + ex.Message);
+		}
 	}
 
 	private void SetStatus(string msg)

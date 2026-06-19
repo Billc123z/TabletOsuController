@@ -52,8 +52,11 @@ text = "PC IP"
 [node name="ServerIp" type="LineEdit" parent="SettingsLayer/Panel/VBox/ServerRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "10.48.90.189"
 placeholder_text = "Windows PC LAN IP"
+
+[node name="ScanButton" type="Button" parent="SettingsLayer/Panel/VBox/ServerRow"]
+layout_mode = 2
+text = "Auto Scan"
 
 [node name="TapToClick" type="CheckButton" parent="SettingsLayer/Panel/VBox"]
 layout_mode = 2
